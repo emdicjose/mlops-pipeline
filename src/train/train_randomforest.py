@@ -1,10 +1,20 @@
+import os
 import mlflow
 import mlflow.sklearn
+from mlflow.models.signature import infer_signature
+
 from sklearn.datasets import load_diabetes
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 import numpy as np
+
+# set tracking uri
+os.environ['MLFLOW_TRACKING_URI'] = "http://127.0.0.1:5000"
+mlflow.set_tracking_uri("http://127.0.0.1:5000")
+
+# set model name
+model_name = "RandomForest"
 
 mlflow.set_experiment("diabetes-example")
 

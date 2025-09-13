@@ -3,6 +3,8 @@ import mlflow
 import mlflow.sklearn
 from mlflow.models.signature import infer_signature
 
+from hyperopt import fmin, tpe, hp, Trials, STATUS_OK
+
 from sklearn.datasets import load_diabetes
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import ElasticNet
@@ -23,35 +25,38 @@ mlflow.set_experiment("diabetes-example")
 X, y = load_diabetes(return_X_y=True)
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-# Random hyperparameters
-alpha = np.random.uniform(0.01, 1.0)
-l1_ratio = np.random.uniform(0.0, 1.0)
+# Define search space
+space = {
+    "alpha": hp.uniform("alpha", 0.01, 1.0),
+    "l1_ratio": hp.uniform("l1_ratio", 0.0, 1.0)
+}
 
-with mlflow.start_run():
-    model = ElasticNet(alpha=alpha, l1_ratio=l1_ratio, random_state=42)
-    model.fit(X_train, y_train)
-    preds = model.predict(X_test)
+# Objective function
+def objective(params):
+    with mlflow.start_run(
+        run_name = f"{model_name}_alpha={params['alpha']:.2f}_l1_ratio={params['l1_ratio']:.2f}"
+    ):
+        model = ElasticNet(**params, random_state=42)
+        model.fit(X_train, y_train)
+        preds = model.predict(X_test)
+        rmse = np.sqrt(mean_squared_error(y_test, preds))
 
-    # Metrics
-    rmse = mean_squared_error(y_test, preds)
-    mae = mean_absolute_error(y_test, preds)
-    r2 = r2_score(y_test, preds)
+        # Log params, metrics, model
+        mlflow.log_params(params)
+        mlflow.log_metric("rmse", rmse)
+        signature = infer_signature(X_train, model.predict(X_train))
+        mlflow.sklearn.log_model(model, name="model", signature=signature, input_example=X_train[:5])
 
-    # Log params, metrics, model
-    mlflow.log_param("alpha", alpha)
-    mlflow.log_param("l1_ratio", l1_ratio)
-    mlflow.log_param("model_type", "ElasticNet")
-    mlflow.log_metric("rmse", rmse)
-    mlflow.log_metric("mae", mae)
-    mlflow.log_metric("r2", r2)
+    return {"loss": rmse, "status": STATUS_OK}
 
-    # Infer model signature
-    signature = infer_signature(X_train, model.predict(X_train))
+trials = Trials()
 
-    mlflow.sklearn.log_model(
-        model,
-        name=model_name,
-        signature=signature,
-        input_example=X_train[:5]
-    )
-    print(f"[ElasticNet] RMSE={rmse:.3f}, MAE={mae:.3f}, R2={r2:.3f}")
+best = fmin(
+    fn=objective,
+    space=space,
+    algo=tpe.suggest,
+    max_evals=5,  # number of hyperparameter combinations to try
+    trials=trials
+)
+
+print("Best hyperparameters:", best)
