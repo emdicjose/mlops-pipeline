@@ -1,2 +1,4 @@
 mlflow
 boto3
+xgboost
+hyperopt
